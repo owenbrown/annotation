@@ -107,14 +107,26 @@ button.delete-btn:hover { background: #e74c3c; }
 }
 svg polygon, svg polyline {
   cursor: pointer;
+  stroke-width: var(--line-w);
   transition: fill-opacity 0.1s;
 }
 svg polygon:hover { fill-opacity: 0.3; }
-svg circle.vertex {
+svg .ann-group circle.vertex {
   cursor: grab;
-  transition: r 0.1s;
+  r: var(--vr);
+  stroke-width: var(--vsw);
 }
-svg circle.vertex:hover { r: 6; }
+svg:has(.ann-group:hover) .ann-group:not(:hover) circle.vertex,
+svg:not(:has(.ann-group:hover)) .ann-group:not(.selected) circle.vertex {
+  display: none;
+}
+svg.dragging circle.vertex {
+  display: none !important;
+}
+svg .ann-group circle.vertex:hover {
+  r: var(--vr-hover);
+  stroke-width: var(--vsw-hover);
+}
 
 /* ── Sidebar ── */
 .sidebar h2 { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
@@ -209,7 +221,6 @@ svg circle.vertex:hover { r: 6; }
     <div class="draw-tools">
       <label>Draw:</label>
       <select id="fieldSelect">
-        <option value="">-- select to draw --</option>
         <option value="vendor_name">vendor_name</option>
         <option value="total">total</option>
         <option value="total_tax">total_tax</option>
@@ -266,6 +277,7 @@ let panStartY = 0;
 // Drawing state
 let drawingMode = false;
 let drawingVertices = [];
+let drawingCursor = null; // [px, py] in percentage coords
 let drawingFieldName = '';
 
 // Vertex drag state
@@ -321,6 +333,20 @@ function genId() { return `ann_${nextId++}`; }
 // ── Transform helpers ──
 function applyTransform() {
   canvasContainer.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  updateVertexSizes();
+}
+
+function updateVertexSizes() {
+  const r = 10 / scale;
+  const rHover = 14 / scale;
+  const sw = 1.5 / scale;
+  const swHover = 2 / scale;
+  overlaySvg.style.setProperty('--vr', r);
+  overlaySvg.style.setProperty('--vr-hover', rHover);
+  overlaySvg.style.setProperty('--vsw', sw);
+  overlaySvg.style.setProperty('--vsw-hover', swHover);
+  overlaySvg.style.setProperty('--line-w', 4 / scale);
+  overlaySvg.style.setProperty('--line-w-selected', 6 / scale);
 }
 
 function svgPoint(clientX, clientY) {
@@ -351,68 +377,89 @@ function renderSvg() {
       .map(([px, py]) => `${(px / 100) * imageWidth},${(py / 100) * imageHeight}`)
       .join(' ');
 
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    group.classList.add('ann-group');
+    if (isSelected) group.classList.add('selected');
+    group.setAttribute('data-id', ann._id);
+
     const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     polygon.setAttribute('points', points);
     polygon.setAttribute('fill', color);
     polygon.setAttribute('fill-opacity', isSelected ? '0.35' : '0.15');
     polygon.setAttribute('stroke', color);
-    polygon.setAttribute('stroke-width', isSelected ? '3' : '2');
+    if (isSelected) polygon.style.strokeWidth = 'var(--line-w-selected)';
     polygon.setAttribute('data-id', ann._id);
     polygon.addEventListener('mousedown', (e) => {
       if (drawingMode || draggingVertex) return;
       e.stopPropagation();
       e.preventDefault();
-      if (ann._id === selectedId) {
-        // Already selected — start dragging the whole polygon
-        const [px, py] = svgPoint(e.clientX, e.clientY);
-        dragPolygonStart = [px, py];
-        draggingPolygon = {
-          annotationId: ann._id,
-          originalVertices: ann.polygon_vertices.map(v => [...v]),
-        };
-      } else {
-        selectAnnotation(ann._id);
+      if (ann._id !== selectedId) {
+        selectedId = ann._id;
+        renderSidebar();
       }
+      const [px, py] = svgPoint(e.clientX, e.clientY);
+      dragPolygonStart = [px, py];
+      draggingPolygon = {
+        annotationId: ann._id,
+        originalVertices: ann.polygon_vertices.map(v => [...v]),
+      };
+      overlaySvg.classList.add('dragging');
     });
-    overlaySvg.appendChild(polygon);
+    group.appendChild(polygon);
 
-    // Draw vertex handles if selected
-    if (isSelected) {
-      ann.polygon_vertices.forEach(([px, py], idx) => {
-        const cx = (px / 100) * imageWidth;
-        const cy = (py / 100) * imageHeight;
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', cx);
-        circle.setAttribute('cy', cy);
-        circle.setAttribute('r', 4);
-        circle.setAttribute('fill', 'white');
-        circle.setAttribute('stroke', color);
-        circle.setAttribute('stroke-width', '2');
-        circle.classList.add('vertex');
-        circle.addEventListener('mousedown', (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          draggingVertex = { annotationId: ann._id, vertexIndex: idx };
-        });
-        overlaySvg.appendChild(circle);
+    // Vertex handles — hidden by default, shown on group hover or selection
+    ann.polygon_vertices.forEach(([px, py], idx) => {
+      const cx = (px / 100) * imageWidth;
+      const cy = (py / 100) * imageHeight;
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', cx);
+      circle.setAttribute('cy', cy);
+      circle.setAttribute('fill', 'white');
+      circle.setAttribute('stroke', color);
+      circle.classList.add('vertex');
+      circle.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!isSelected) {
+          selectedId = ann._id;
+          render();
+        }
+        draggingVertex = { annotationId: ann._id, vertexIndex: idx };
       });
-    }
+      group.appendChild(circle);
+    });
+    overlaySvg.appendChild(group);
   }
 
   // Draw in-progress polygon
   if (drawingMode && drawingVertices.length > 0) {
     const color = fieldColor(drawingFieldName);
-    const points = drawingVertices
-      .map(([px, py]) => `${(px / 100) * imageWidth},${(py / 100) * imageHeight}`)
-      .join(' ');
+    const allPts = drawingCursor
+      ? [...drawingVertices, drawingCursor]
+      : drawingVertices;
+    const toSvg = ([px, py]) => `${(px / 100) * imageWidth},${(py / 100) * imageHeight}`;
+    const pointsStr = allPts.map(toSvg).join(' ');
 
-    const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-    polyline.setAttribute('points', points);
-    polyline.setAttribute('fill', 'none');
-    polyline.setAttribute('stroke', color);
-    polyline.setAttribute('stroke-width', '2');
-    polyline.setAttribute('stroke-dasharray', '6 3');
-    overlaySvg.appendChild(polyline);
+    if (allPts.length >= 3) {
+      // Filled polygon preview
+      const preview = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      preview.setAttribute('points', pointsStr);
+      preview.setAttribute('fill', color);
+      preview.setAttribute('fill-opacity', '0.15');
+      preview.setAttribute('stroke', color);
+      preview.setAttribute('stroke-dasharray', '6 3');
+      preview.setAttribute('id', 'drawing-preview');
+      overlaySvg.appendChild(preview);
+    } else {
+      // Line only
+      const preview = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      preview.setAttribute('points', pointsStr);
+      preview.setAttribute('fill', 'none');
+      preview.setAttribute('stroke', color);
+      preview.setAttribute('stroke-dasharray', '6 3');
+      preview.setAttribute('id', 'drawing-preview');
+      overlaySvg.appendChild(preview);
+    }
 
     // Draw placed vertices
     drawingVertices.forEach(([px, py]) => {
@@ -421,10 +468,9 @@ function renderSvg() {
       const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       circle.setAttribute('cx', cx);
       circle.setAttribute('cy', cy);
-      circle.setAttribute('r', 4);
       circle.setAttribute('fill', color);
       circle.setAttribute('stroke', 'white');
-      circle.setAttribute('stroke-width', '1.5');
+      circle.classList.add('vertex');
       overlaySvg.appendChild(circle);
     });
   }
@@ -538,6 +584,20 @@ canvasArea.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
+  if (drawingMode && drawingVertices.length > 0) {
+    const prev = drawingCursor;
+    drawingCursor = svgPoint(e.clientX, e.clientY);
+    const allPts = [...drawingVertices, drawingCursor];
+    const preview = document.getElementById('drawing-preview');
+    // Re-render if crossing the 3-point threshold (polyline↔polygon swap)
+    const prevCount = prev ? drawingVertices.length + 1 : drawingVertices.length;
+    if (!preview || (prevCount < 3 && allPts.length >= 3)) {
+      renderSvg();
+    } else {
+      const toSvg = ([px, py]) => `${(px / 100) * imageWidth},${(py / 100) * imageHeight}`;
+      preview.setAttribute('points', allPts.map(toSvg).join(' '));
+    }
+  }
   if (isPanning) {
     panX = e.clientX - panStartX;
     panY = e.clientY - panStartY;
@@ -611,16 +671,15 @@ window.addEventListener('mouseup', () => {
   }
   if (draggingPolygon) {
     draggingPolygon = null;
+    overlaySvg.classList.remove('dragging');
     renderSvg();
   }
 });
 
 // ── Drawing mode ──
 drawBtn.addEventListener('click', () => {
-  const field = fieldSelect.value;
-  if (!field) { showToast('Select a field type first', 'error'); return; }
   drawingMode = true;
-  drawingFieldName = field;
+  drawingFieldName = fieldSelect.value;
   drawingVertices = [];
   canvasArea.classList.add('drawing');
   drawBtn.style.display = 'none';
@@ -635,6 +694,7 @@ function exitDrawingMode() {
   drawingMode = false;
   drawingVertices = [];
   drawingFieldName = '';
+  drawingCursor = null;
   canvasArea.classList.remove('drawing');
   drawBtn.style.display = '';
   cancelDrawBtn.style.display = 'none';
@@ -724,6 +784,8 @@ async function init() {
   // Size SVG to match image
   overlaySvg.setAttribute('width', imageWidth);
   overlaySvg.setAttribute('height', imageHeight);
+
+  updateVertexSizes();
 
   // Fit image in viewport
   const areaRect = canvasArea.getBoundingClientRect();
