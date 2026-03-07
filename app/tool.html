@@ -105,6 +105,11 @@ button.delete-btn:hover { background: #e74c3c; }
   top: 0;
   left: 0;
 }
+svg .crosshair {
+  stroke: #fff8;
+  stroke-width: 1;
+  pointer-events: none;
+}
 svg polygon, svg polyline {
   cursor: pointer;
   stroke-width: var(--line-w);
@@ -371,6 +376,20 @@ function renderSvg() {
   overlaySvg.setAttribute('height', imageHeight);
   overlaySvg.setAttribute('viewBox', `0 0 ${imageWidth} ${imageHeight}`);
 
+  // Crosshair lines
+  const hLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  hLine.setAttribute('x1', 0); hLine.setAttribute('x2', imageWidth);
+  hLine.setAttribute('y1', -10); hLine.setAttribute('y2', -10);
+  hLine.classList.add('crosshair');
+  hLine.id = 'crosshair-h';
+  overlaySvg.appendChild(hLine);
+  const vLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  vLine.setAttribute('y1', 0); vLine.setAttribute('y2', imageHeight);
+  vLine.setAttribute('x1', -10); vLine.setAttribute('x2', -10);
+  vLine.classList.add('crosshair');
+  vLine.id = 'crosshair-v';
+  overlaySvg.appendChild(vLine);
+
   for (const ann of annotations) {
     if (ann.is_preannotation) continue;
     const color = fieldColor(ann.field_name);
@@ -560,11 +579,12 @@ function selectAnnotation(id) {
 // ── Zoom / Pan ──
 canvasArea.addEventListener('wheel', (e) => {
   e.preventDefault();
+  const rect = canvasArea.getBoundingClientRect();
+  const minScale = Math.min(rect.width / imageWidth, rect.height / imageHeight);
   const delta = e.deltaY > 0 ? 0.9 : 1.1;
-  const newScale = Math.min(Math.max(scale * delta, 0.1), 10);
+  const newScale = Math.min(Math.max(scale * delta, minScale), 10);
 
   // Zoom toward cursor
-  const rect = canvasArea.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
   panX = mx - (mx - panX) * (newScale / scale);
@@ -589,6 +609,15 @@ canvasArea.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
+  // Update crosshair
+  const rect = canvasContainer.getBoundingClientRect();
+  const imgX = (e.clientX - rect.left) / scale;
+  const imgY = (e.clientY - rect.top) / scale;
+  const hLine = document.getElementById('crosshair-h');
+  const vLine = document.getElementById('crosshair-v');
+  if (hLine) { hLine.setAttribute('y1', imgY); hLine.setAttribute('y2', imgY); }
+  if (vLine) { vLine.setAttribute('x1', imgX); vLine.setAttribute('x2', imgX); }
+
   if (drawingMode && drawingVertices.length > 0) {
     const prev = drawingCursor;
     drawingCursor = svgPoint(e.clientX, e.clientY);
@@ -627,11 +656,14 @@ window.addEventListener('mousemove', (e) => {
         polygonEl.setAttribute('points', points);
       }
       // Update the dragged vertex circle
-      const circles = overlaySvg.querySelectorAll('circle.vertex');
-      const circle = circles[draggingVertex.vertexIndex];
-      if (circle) {
-        circle.setAttribute('cx', (clampedX / 100) * imageWidth);
-        circle.setAttribute('cy', (clampedY / 100) * imageHeight);
+      const group = overlaySvg.querySelector(`g[data-id="${ann._id}"]`);
+      if (group) {
+        const circles = group.querySelectorAll('circle.vertex');
+        const circle = circles[draggingVertex.vertexIndex];
+        if (circle) {
+          circle.setAttribute('cx', (clampedX / 100) * imageWidth);
+          circle.setAttribute('cy', (clampedY / 100) * imageHeight);
+        }
       }
     }
     return;
@@ -656,7 +688,8 @@ window.addEventListener('mousemove', (e) => {
         polygonEl.setAttribute('points', points);
       }
       // Update vertex circles
-      const circles = overlaySvg.querySelectorAll('circle.vertex');
+      const group = overlaySvg.querySelector(`g[data-id="${ann._id}"]`);
+      const circles = group ? group.querySelectorAll('circle.vertex') : [];
       ann.polygon_vertices.forEach(([vx, vy], idx) => {
         if (circles[idx]) {
           circles[idx].setAttribute('cx', (vx / 100) * imageWidth);
