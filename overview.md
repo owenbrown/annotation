@@ -1,7 +1,3 @@
-The goal for this working session to to plan out the future of annotated training data.
-
-I will take a product-management focused approach.
-
 ## Goals
 
 Efficiently create accurate training data for training machine learning models.
@@ -10,24 +6,29 @@ Efficiently create accurate training data for training machine learning models.
 
 **Job** - The unit of work that an annotator submits. There are smaller units of work, but all of those units of work are treated as "in progress" until a job is completed.
 
-**Annotations Task** Has jobs, a task spec, and a business problem that is trying to be solved.  
+**Annotations Task** Has jobs, a task spec, and a business problem that is trying to be solved. 
+
 - Previously, annotations tasks were conceptuallized to assign the same fields to be annotated for each document. This new requirement is to be able to assign different fields to be anonotated for each document.
 
 **Operations Task** An action that an AI agent or annotations manager performs.  
- *The work Task could be applied to both.*
+ 
+ **The word Task could be applied to both.**
 
-## **Problems**
+## **Problems with current operations**
 
 1. Calculating annotators velocity and accuracy on any given job is hard.  
 2. Calculating annotators velocity and accuracy across jobs in the same task is hard.  
-3. Calculating annotators velocity across different tasks is hard  
+3. Calculating annotators velocity across different tasks is hard. 
 4. Annotators are not rewarded for accuracy  
 5. When a mistake is found in data, we don't know which annotator made the mistake.  
-6. Annotation speed is limited by a single reviewer, Irina, who "Accepts" each job  
-7. Annotators must too much. They may learn about how to process a Money Order, and only process a few of them.  
+6. When a reviewing annotator corrects data, we don't penalize the first annotator.
+7. Annotation speed is limited by a single reviewer, Irina, who "Accepts" each job  
+8. Annotators must too much. They may learn about how to process a Money Order, and only process a few of them.  
+9. Annotators receive different document types randomly. They might do better to, for example, do many of a single document type in a row.
 8. Creating training tasks is hard.  
-9. An annotator's task is often to review data. It's a problem because, if data is 99% accurate, the annotator is as likely as not to change and correct value to a positive value.  
+9. An annotator's task is often to review data. It's a problem because, if data is 99% accurate, the annotator is as likely to change correct values into incorrect values.
 10. Comparing the accuracy of an annotator that is reviewing data that is 99% correct is incomparable to an annotators that is reviewing data that is 90% correct.
+
 
 ## **Insights**
 0. Our machine learning model are between 90 and 99.9% accurate. We're nearly always cleaning data, rather than creating data from scratch.
@@ -37,9 +38,7 @@ Efficiently create accurate training data for training machine learning models.
 4. Creating a system, on top of CVAT, that meets our needs will required 10x more work than building a new system.  
 5. Building a new system would not mean "building it from scratch". We will copy code directly from CVAT, Label Studio. Likely, we'll copy LabelStudio.
 6. I, Owen, never really worked with the other tools. So, I'm re-inventing the wheel because I don't know what premium features exist. On the other hand, I'm not constrained by the their thinking.  
-7. People that create great film, writing, and software, usually start by looking at the great work of others and copying what they lie.  
-8. I can do research in parallel.  
-   1. I can research the features of the other platforms while I work on other things  
+7. People that create great film, writing, and software, usually start by looking at the great work of others and copying what they like.  
 9. I could create an open-source HTML page or application for labeling data. If I do that I can do it from my other laptop.  
 10. Managers perform the same 10 or 20 data labeling tasks over and over again. The way these tasks are organized currently, the manage needs to load a lot of context into their head and also perform an lot of repetitive steps.  
 11. The existing platform cannot be operated by an agent.
@@ -121,8 +120,6 @@ It might be interesting to have a confidence score for fields.
   - A task might consist of some documents being annotated for one field, and some documents being annotated with a separate field
 
 
-
-
 ## Design
 Design of the system starts with re-desigining 
 
@@ -131,7 +128,6 @@ Design of the system starts with re-desigining
 # Problem / cosideration
 - I have been thinking in terms of how the data needs to be stored, to efficiently annotate and clean.
 - However, my model requires stitching together field-level data into data that can be trained on.
-
 
 -
 The most important consideration is how to support multiple annotators annotating the same document, without bottlenecking the manager.

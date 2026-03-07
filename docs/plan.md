@@ -10,7 +10,7 @@ We're building a single-page annotation tool at `app/tool.html` that loads data 
 - No pre-built bundle exists in the repo. Building requires the full Nx monorepo toolchain (hundreds of npm deps, SCSS compilation, webpack, custom humansignal packages).
 - LSF is 148K lines across 691 files. Even a "minimal" build pulls in MobX State Tree, Konva.js, Ant Design, and 30+ region types for modalities we don't need (audio, video, text, time series).
 - Our end goal is zero third-party dependencies. Starting with a 148K-line framework and stripping it down is backwards — we'd remove more than we keep.
-- LSF's XML config system is something we explicitly want to replace with JavaScript.
+- LSF's XML config system is irrelevant — it defines the annotation UI layout declaratively. We don't need this abstraction. We're building one annotation UI for document images, not a generic framework for arbitrary modalities.
 
 **What we ARE copying from LSF:**
 - Event-driven architecture (editor emits events, parent controls data flow)
@@ -46,15 +46,18 @@ app/tool.html          <- Single HTML file, opens in browser
 ### Phase 1: Working Proof of Concept
 Build `app/tool.html` — a single HTML file that:
 
-1. [x] Loads the kroger.jpg receipt image
-2. [x] Fetches annotations from `GET /`
-3. [x] Renders polygon overlays on the image using SVG
-4. [x] Distinguishes pre-annotations (dashed outline) from current annotations (solid outline)
-5. [x] Shows a sidebar with the annotation fields and values
-6. [x] Lets the user click a polygon to select it and see/edit its attributes
-7. [x] Lets the user edit the text value in the sidebar
-8. [x] Has a Save button that POSTs updated annotations to `POST /`
-9. [x] Basic zoom/pan on the image
+1. [ ] Loads the kroger.jpg receipt image
+2. [ ] Fetches annotations from `GET /`, filters out pre-annotations
+3. [ ] Renders polygon overlays on the image using SVG
+4. [ ] Shows a sidebar with annotation fields, values, handwriting checkbox
+5. [ ] Lets the user click a polygon to select it and highlight it in the sidebar
+6. [ ] Lets the user edit the text value and handwriting flag in the sidebar
+7. [ ] Lets the user drag polygon vertices to adjust shapes
+8. [ ] Lets the user draw NEW polygons (select field type, click to place vertices, close)
+9. [ ] Lets the user delete annotations (button in sidebar)
+10. [ ] Has a Save button that POSTs annotations to `POST /`
+11. [ ] Basic zoom/pan on the image
+12. [ ] Field types color-coded: vendor_name, total, total_tax, location
 
 **Ask Owen to test after this phase.**
 
@@ -65,10 +68,10 @@ Build `app/tool.html` — a single HTML file that:
 - All CSS uses modern features (custom properties, grid, container queries, :has())
 - No React, no MUI, no Ant Design — vanilla JS with DOM APIs
 
-### Phase 3: Replace XML With JavaScript
-- Already done if Phase 1 uses JS objects for config
-- Annotation schema defined as a JS object, not XML
-- Field definitions (name, type, allowed values) are plain JS
+### Phase 3: No XML Anywhere
+- LSF uses XML to define annotation UIs declaratively. We don't use this pattern at all.
+- Our annotation schema (field names, types, allowed values) will be plain JSON from the API.
+- All data exchange is JSON. No XML, no protobuf, no COCO format.
 
 ## File Structure
 
@@ -100,12 +103,20 @@ Browser loads: /static/tool.html
        Response: { status: "ok" }
 ```
 
-## Questions for Owen
+## Decisions Made
 
-1. **Image serving**: Should the FastAPI app serve kroger.jpg as a static file (e.g., `/static/kroger.jpg`), or should it be a dedicated endpoint like `GET /image`? I'll default to static file serving.
+1. **Image serving**: Serve via FastAPI static files mount. Simple, no extra endpoint needed. Will serve tool.html the same way.
 
-2. **Coordinates**: The dummy annotation coordinates are very small (e.g., `[1.0, 2.0]`). Are these pixel coordinates, or normalized 0-1 coordinates, or percentage coordinates? For a receipt image that's likely 1000+ pixels tall, coordinates like `(1, 2)` to `(8, 5)` would be tiny pixel boxes in the top-left corner. Should I treat them as percentages (0-100 scale) for the proof of concept, or would you prefer I update the dummy data to match the actual Kroger logo position on the receipt?
+2. **Coordinates**: Use percentage coordinates (0-100) matching Label Studio's convention. Will update dummy data to place annotations over the actual Kroger logo area on the receipt.
 
-3. **Polygon editing**: For the POC, should clicking a polygon let you edit only the text value, or also drag the polygon vertices? I'll start with text editing only and add vertex dragging as a follow-up.
+3. **Polygon editing**: Vertex dragging is required. Will implement drag handles on polygon vertices.
 
-4. **Multiple annotations on the same field**: The dummy data has two annotations for `vendor_name` — one current (`kroger`) and one pre-annotation (`KROKER`). Should the sidebar show both side-by-side (current vs pre-annotation), or show the current value with a "show pre-annotation" toggle?
+4. **Pre-annotations**: Don't display for now. Filter them out on the client side.
+
+5. **Per-field attributes**: Each annotation has `handwriting: bool`. The sidebar shows a checkbox for this. The system will eventually support different attribute sets per field type, but for now `handwriting` is on everything.
+
+6. **Creating new annotations**: User can draw new polygons. Available field types: vendor_name, total, total_tax, location. User selects field type, clicks to place vertices, closes polygon.
+
+7. **Deleting annotations**: Yes, delete button in sidebar.
+
+8. **Vertex dragging**: Free sub-pixel positioning. No grid snapping.

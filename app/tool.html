@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Annotation Tool</title>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --surface-2: #0f3460;
+  --text: #e0e0e0;
+  --text-muted: #8a8a9a;
+  --accent: #e94560;
+  --border: #2a2a4a;
+  --selected: #e9456030;
+
+  --color-vendor_name: #4ecdc4;
+  --color-total: #ff6b6b;
+  --color-total_tax: #ffd93d;
+  --color-location: #6c5ce7;
+}
+html, body { height: 100%; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+
+/* ── Layout ── */
+.app {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+.toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.toolbar h1 { font-size: 14px; font-weight: 600; margin-right: auto; }
+.canvas-area {
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  background: #111;
+}
+.canvas-area.drawing { cursor: crosshair; }
+.canvas-area:active { cursor: grabbing; }
+.canvas-area.drawing:active { cursor: crosshair; }
+.sidebar {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Buttons ── */
+button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+button:hover { background: #1a4a80; }
+button.active { background: var(--accent); border-color: var(--accent); }
+button.save-btn { background: #27ae60; border-color: #27ae60; }
+button.save-btn:hover { background: #2ecc71; }
+button.delete-btn { background: #c0392b; border-color: #c0392b; font-size: 12px; padding: 4px 10px; }
+button.delete-btn:hover { background: #e74c3c; }
+
+/* ── Drawing toolbar ── */
+.draw-tools { display: flex; gap: 4px; align-items: center; }
+.draw-tools label { font-size: 12px; color: var(--text-muted); margin-right: 4px; }
+.draw-tools select {
+  padding: 4px 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+/* ── SVG Canvas ── */
+.canvas-container {
+  position: absolute;
+  transform-origin: 0 0;
+}
+.canvas-container img {
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.canvas-container svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+svg polygon, svg polyline {
+  cursor: pointer;
+  transition: fill-opacity 0.1s;
+}
+svg polygon:hover { fill-opacity: 0.3; }
+svg circle.vertex {
+  cursor: grab;
+  transition: r 0.1s;
+}
+svg circle.vertex:hover { r: 6; }
+
+/* ── Sidebar ── */
+.sidebar h2 { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+.annotation-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.annotation-card:hover { border-color: #4a4a6a; }
+.annotation-card.selected { border-color: var(--accent); background: var(--selected); }
+.annotation-card .field-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.annotation-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.annotation-card input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+.annotation-card input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.annotation-card label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.annotation-card input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+/* ── Status bar ── */
+.status {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: #000a;
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.toast.show { opacity: 1; }
+.toast.success { background: #27ae60; color: white; }
+.toast.error { background: #c0392b; color: white; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <h1>Annotation Tool</h1>
+    <div class="draw-tools">
+      <label>Draw:</label>
+      <select id="fieldSelect">
+        <option value="">-- select to draw --</option>
+        <option value="vendor_name">vendor_name</option>
+        <option value="total">total</option>
+        <option value="total_tax">total_tax</option>
+        <option value="location">location</option>
+      </select>
+      <button id="drawBtn">Draw Polygon</button>
+      <button id="cancelDrawBtn" style="display:none;">Cancel (Esc)</button>
+    </div>
+    <button class="save-btn" id="saveBtn">Save</button>
+  </div>
+
+  <!-- Canvas -->
+  <div class="canvas-area" id="canvasArea">
+    <div class="canvas-container" id="canvasContainer">
+      <img id="docImage" draggable="false">
+      <svg id="overlaySvg" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div class="status" id="status">Loading...</div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <h2>Annotations</h2>
+    <div id="annotationList"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Field type colors ──
+const FIELD_COLORS = {
+  vendor_name: '#4ecdc4',
+  total: '#ff6b6b',
+  total_tax: '#ffd93d',
+  location: '#6c5ce7',
+};
+function fieldColor(name) { return FIELD_COLORS[name] || '#888'; }
+
+// ── State ──
+let annotations = [];
+let selectedId = null;
+let imageWidth = 0;
+let imageHeight = 0;
+
+// Zoom/pan state
+let scale = 1;
+let panX = 0;
+let panY = 0;
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+
+// Drawing state
+let drawingMode = false;
+let drawingVertices = [];
+let drawingFieldName = '';
+
+// Vertex drag state
+let draggingVertex = null; // { annotationId, vertexIndex }
+
+// Polygon drag state (move entire shape)
+let draggingPolygon = null; // { annotationId, originalVertices }
+let dragPolygonStart = [0, 0];
+
+// ── DOM refs ──
+const canvasArea = document.getElementById('canvasArea');
+const canvasContainer = document.getElementById('canvasContainer');
+const docImage = document.getElementById('docImage');
+const overlaySvg = document.getElementById('overlaySvg');
+const sidebar = document.getElementById('sidebar');
+const annotationList = document.getElementById('annotationList');
+const statusEl = document.getElementById('status');
+const saveBtn = document.getElementById('saveBtn');
+const drawBtn = document.getElementById('drawBtn');
+const cancelDrawBtn = document.getElementById('cancelDrawBtn');
+const fieldSelect = document.getElementById('fieldSelect');
+const toastEl = document.getElementById('toast');
+
+// ── API ──
+const API_BASE = window.location.origin;
+
+async function fetchAnnotations() {
+  const res = await fetch(`${API_BASE}/api/annotations`);
+  const data = await res.json();
+  return data.annotations;
+}
+
+async function saveAnnotations(annots) {
+  const res = await fetch(`${API_BASE}/api/annotations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ annotations: annots }),
+  });
+  return res.json();
+}
+
+// ── Toast ──
+function showToast(msg, type = 'success') {
+  toastEl.textContent = msg;
+  toastEl.className = `toast ${type} show`;
+  setTimeout(() => toastEl.classList.remove('show'), 2000);
+}
+
+// ── ID generation ──
+let nextId = 1;
+function genId() { return `ann_${nextId++}`; }
+
+// ── Transform helpers ──
+function applyTransform() {
+  canvasContainer.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+}
+
+function svgPoint(clientX, clientY) {
+  // Convert screen coords to image percentage coords
+  const rect = canvasContainer.getBoundingClientRect();
+  const imgX = (clientX - rect.left) / scale;
+  const imgY = (clientY - rect.top) / scale;
+  return [
+    (imgX / imageWidth) * 100,
+    (imgY / imageHeight) * 100,
+  ];
+}
+
+// ── Render SVG ──
+function renderSvg() {
+  overlaySvg.innerHTML = '';
+  overlaySvg.setAttribute('width', imageWidth);
+  overlaySvg.setAttribute('height', imageHeight);
+  overlaySvg.setAttribute('viewBox', `0 0 ${imageWidth} ${imageHeight}`);
+
+  for (const ann of annotations) {
+    if (ann.is_preannotation) continue;
+    const color = fieldColor(ann.field_name);
+    const isSelected = ann._id === selectedId;
+
+    // Convert percentage coords to pixel coords for SVG
+    const points = ann.polygon_vertices
+      .map(([px, py]) => `${(px / 100) * imageWidth},${(py / 100) * imageHeight}`)
+      .join(' ');
+
+    const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    polygon.setAttribute('points', points);
+    polygon.setAttribute('fill', color);
+    polygon.setAttribute('fill-opacity', isSelected ? '0.35' : '0.15');
+    polygon.setAttribute('stroke', color);
+    polygon.setAttribute('stroke-width', isSelected ? '3' : '2');
+    polygon.setAttribute('data-id', ann._id);
+    polygon.addEventListener('mousedown', (e) => {
+      if (drawingMode || draggingVertex) return;
+      e.stopPropagation();
+      e.preventDefault();
+      if (ann._id === selectedId) {
+        // Already selected — start dragging the whole polygon
+        const [px, py] = svgPoint(e.clientX, e.clientY);
+        dragPolygonStart = [px, py];
+        draggingPolygon = {
+          annotationId: ann._id,
+          originalVertices: ann.polygon_vertices.map(v => [...v]),
+        };
+      } else {
+        selectAnnotation(ann._id);
+      }
+    });
+    overlaySvg.appendChild(polygon);
+
+    // Draw vertex handles if selected
+    if (isSelected) {
+      ann.polygon_vertices.forEach(([px, py], idx) => {
+        const cx = (px / 100) * imageWidth;
+        const cy = (py / 100) * imageHeight;
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', cx);
+        circle.setAttribute('cy', cy);
+        circle.setAttribute('r', 4);
+        circle.setAttribute('fill', 'white');
+        circle.setAttribute('stroke', color);
+        circle.setAttribute('stroke-width', '2');
+        circle.classList.add('vertex');
+        circle.addEventListener('mousedown', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          draggingVertex = { annotationId: ann._id, vertexIndex: idx };
+        });
+        overlaySvg.appendChild(circle);
+      });
+    }
+  }
+
+  // Draw in-progress polygon
+  if (drawingMode && drawingVertices.length > 0) {
+    const color = fieldColor(drawingFieldName);
+    const points = drawingVertices
+      .map(([px, py]) => `${(px / 100) * imageWidth},${(py / 100) * imageHeight}`)
+      .join(' ');
+
+    const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    polyline.setAttribute('points', points);
+    polyline.setAttribute('fill', 'none');
+    polyline.setAttribute('stroke', color);
+    polyline.setAttribute('stroke-width', '2');
+    polyline.setAttribute('stroke-dasharray', '6 3');
+    overlaySvg.appendChild(polyline);
+
+    // Draw placed vertices
+    drawingVertices.forEach(([px, py]) => {
+      const cx = (px / 100) * imageWidth;
+      const cy = (py / 100) * imageHeight;
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', cx);
+      circle.setAttribute('cy', cy);
+      circle.setAttribute('r', 4);
+      circle.setAttribute('fill', color);
+      circle.setAttribute('stroke', 'white');
+      circle.setAttribute('stroke-width', '1.5');
+      overlaySvg.appendChild(circle);
+    });
+  }
+}
+
+// ── Render Sidebar ──
+function renderSidebar() {
+  annotationList.innerHTML = '';
+  const visible = annotations.filter(a => !a.is_preannotation);
+
+  for (const ann of visible) {
+    const card = document.createElement('div');
+    card.className = `annotation-card${ann._id === selectedId ? ' selected' : ''}`;
+    card.addEventListener('click', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+      selectAnnotation(ann._id);
+    });
+
+    const color = fieldColor(ann.field_name);
+
+    card.innerHTML = `
+      <div class="card-header">
+        <select class="field-select" data-id="${ann._id}" style="background:${color}22; color:${color}; border:1px solid ${color}44; padding:2px 8px; border-radius:3px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.3px; cursor:pointer;">
+          ${Object.keys(FIELD_COLORS).map(f => `<option value="${f}" ${f === ann.field_name ? 'selected' : ''} style="background:var(--bg);color:var(--text);text-transform:uppercase;">${f}</option>`).join('')}
+        </select>
+        <button class="delete-btn" data-id="${ann._id}">Delete</button>
+      </div>
+      <input type="text" value="${ann.value}" data-id="${ann._id}" data-field="value" placeholder="Value...">
+      <label>
+        <input type="checkbox" ${ann.handwriting ? 'checked' : ''} data-id="${ann._id}" data-field="handwriting">
+        Handwriting
+      </label>
+    `;
+    annotationList.appendChild(card);
+  }
+
+  // Event delegation for inputs
+  annotationList.querySelectorAll('input[type="text"]').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const ann = annotations.find(a => a._id === e.target.dataset.id);
+      if (ann) ann.value = e.target.value;
+    });
+  });
+
+  annotationList.querySelectorAll('input[type="checkbox"]').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const ann = annotations.find(a => a._id === e.target.dataset.id);
+      if (ann) ann.handwriting = e.target.checked;
+    });
+  });
+
+  annotationList.querySelectorAll('.field-select').forEach(select => {
+    select.addEventListener('change', (e) => {
+      const ann = annotations.find(a => a._id === e.target.dataset.id);
+      if (ann) {
+        ann.field_name = e.target.value;
+        render();
+      }
+    });
+  });
+
+  annotationList.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = e.target.dataset.id;
+      annotations = annotations.filter(a => a._id !== id);
+      if (selectedId === id) selectedId = null;
+      render();
+    });
+  });
+}
+
+function render() {
+  renderSvg();
+  renderSidebar();
+}
+
+function selectAnnotation(id) {
+  selectedId = selectedId === id ? null : id;
+  render();
+}
+
+// ── Zoom / Pan ──
+canvasArea.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.min(Math.max(scale * delta, 0.1), 10);
+
+  // Zoom toward cursor
+  const rect = canvasArea.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  panX = mx - (mx - panX) * (newScale / scale);
+  panY = my - (my - panY) * (newScale / scale);
+  scale = newScale;
+
+  applyTransform();
+  statusEl.textContent = `Zoom: ${Math.round(scale * 100)}%`;
+}, { passive: false });
+
+canvasArea.addEventListener('mousedown', (e) => {
+  if (drawingMode) return;
+  if (draggingVertex || draggingPolygon) return;
+  // Only pan with left click on empty area (not on SVG shapes)
+  const isPanTarget = e.target === canvasArea || e.target === docImage || e.target === overlaySvg;
+  if (e.button === 0 && isPanTarget) {
+    isPanning = true;
+    panStartX = e.clientX - panX;
+    panStartY = e.clientY - panY;
+    e.preventDefault();
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (isPanning) {
+    panX = e.clientX - panStartX;
+    panY = e.clientY - panStartY;
+    applyTransform();
+    return;
+  }
+  if (draggingVertex) {
+    e.preventDefault();
+    const [px, py] = svgPoint(e.clientX, e.clientY);
+    const ann = annotations.find(a => a._id === draggingVertex.annotationId);
+    if (ann) {
+      const clampedX = Math.max(0, Math.min(100, px));
+      const clampedY = Math.max(0, Math.min(100, py));
+      ann.polygon_vertices[draggingVertex.vertexIndex] = [clampedX, clampedY];
+
+      // Update SVG in-place instead of full re-render
+      const polygonEl = overlaySvg.querySelector(`polygon[data-id="${ann._id}"]`);
+      if (polygonEl) {
+        const points = ann.polygon_vertices
+          .map(([vx, vy]) => `${(vx / 100) * imageWidth},${(vy / 100) * imageHeight}`)
+          .join(' ');
+        polygonEl.setAttribute('points', points);
+      }
+      // Update the dragged vertex circle
+      const circles = overlaySvg.querySelectorAll('circle.vertex');
+      const circle = circles[draggingVertex.vertexIndex];
+      if (circle) {
+        circle.setAttribute('cx', (clampedX / 100) * imageWidth);
+        circle.setAttribute('cy', (clampedY / 100) * imageHeight);
+      }
+    }
+    return;
+  }
+  if (draggingPolygon) {
+    e.preventDefault();
+    const [px, py] = svgPoint(e.clientX, e.clientY);
+    const dx = px - dragPolygonStart[0];
+    const dy = py - dragPolygonStart[1];
+    const ann = annotations.find(a => a._id === draggingPolygon.annotationId);
+    if (ann) {
+      ann.polygon_vertices = draggingPolygon.originalVertices.map(([vx, vy]) => [
+        Math.max(0, Math.min(100, vx + dx)),
+        Math.max(0, Math.min(100, vy + dy)),
+      ]);
+      // Update SVG in-place
+      const polygonEl = overlaySvg.querySelector(`polygon[data-id="${ann._id}"]`);
+      if (polygonEl) {
+        const points = ann.polygon_vertices
+          .map(([vx, vy]) => `${(vx / 100) * imageWidth},${(vy / 100) * imageHeight}`)
+          .join(' ');
+        polygonEl.setAttribute('points', points);
+      }
+      // Update vertex circles
+      const circles = overlaySvg.querySelectorAll('circle.vertex');
+      ann.polygon_vertices.forEach(([vx, vy], idx) => {
+        if (circles[idx]) {
+          circles[idx].setAttribute('cx', (vx / 100) * imageWidth);
+          circles[idx].setAttribute('cy', (vy / 100) * imageHeight);
+        }
+      });
+    }
+    return;
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  isPanning = false;
+  if (draggingVertex) {
+    draggingVertex = null;
+    renderSvg(); // Final clean re-render
+  }
+  if (draggingPolygon) {
+    draggingPolygon = null;
+    renderSvg();
+  }
+});
+
+// ── Drawing mode ──
+drawBtn.addEventListener('click', () => {
+  const field = fieldSelect.value;
+  if (!field) { showToast('Select a field type first', 'error'); return; }
+  drawingMode = true;
+  drawingFieldName = field;
+  drawingVertices = [];
+  canvasArea.classList.add('drawing');
+  drawBtn.style.display = 'none';
+  cancelDrawBtn.style.display = '';
+  statusEl.textContent = 'Click to place vertices. Double-click to finish.';
+  render();
+});
+
+cancelDrawBtn.addEventListener('click', exitDrawingMode);
+
+function exitDrawingMode() {
+  drawingMode = false;
+  drawingVertices = [];
+  drawingFieldName = '';
+  canvasArea.classList.remove('drawing');
+  drawBtn.style.display = '';
+  cancelDrawBtn.style.display = 'none';
+  statusEl.textContent = `Zoom: ${Math.round(scale * 100)}%`;
+  render();
+}
+
+// Place vertex on click in drawing mode
+overlaySvg.addEventListener('click', (e) => {
+  if (!drawingMode) return;
+  const [px, py] = svgPoint(e.clientX, e.clientY);
+  drawingVertices.push([px, py]);
+  renderSvg();
+  statusEl.textContent = `${drawingVertices.length} vertices placed. Double-click to finish.`;
+});
+
+overlaySvg.addEventListener('dblclick', (e) => {
+  if (!drawingMode) return;
+  e.preventDefault();
+  if (drawingVertices.length < 3) {
+    showToast('Need at least 3 vertices', 'error');
+    return;
+  }
+  // Remove the last vertex added by the click event of the dblclick
+  // (dblclick fires two clicks then dblclick — the last click added a duplicate)
+  if (drawingVertices.length > 3) {
+    drawingVertices.pop();
+  }
+  const newAnn = {
+    _id: genId(),
+    polygon_vertices: [...drawingVertices],
+    field_name: drawingFieldName,
+    value: '',
+    is_preannotation: false,
+    handwriting: false,
+  };
+  annotations.push(newAnn);
+  selectedId = newAnn._id;
+  exitDrawingMode();
+});
+
+// Deselect on click in empty area
+canvasArea.addEventListener('click', (e) => {
+  if (drawingMode) return;
+  if (e.target === canvasArea || e.target === docImage) {
+    selectedId = null;
+    render();
+  }
+});
+
+// Escape to cancel drawing or deselect
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (drawingMode) exitDrawingMode();
+    else { selectedId = null; render(); }
+  }
+  if (e.key === 'Delete' && selectedId && document.activeElement.tagName !== 'INPUT') {
+    annotations = annotations.filter(a => a._id !== selectedId);
+    selectedId = null;
+    render();
+  }
+});
+
+// ── Save ──
+saveBtn.addEventListener('click', async () => {
+  try {
+    // Strip internal _id before sending
+    const toSend = annotations.map(({ _id, ...rest }) => rest);
+    const result = await saveAnnotations(toSend);
+    showToast(`Saved ${result.count} annotations`);
+  } catch (err) {
+    showToast(`Save failed: ${err.message}`, 'error');
+  }
+});
+
+// ── Init ──
+async function init() {
+  // Load image
+  docImage.src = `${API_BASE}/kroger.jpg`;
+  await new Promise((resolve, reject) => {
+    docImage.onload = resolve;
+    docImage.onerror = reject;
+  });
+  imageWidth = docImage.naturalWidth;
+  imageHeight = docImage.naturalHeight;
+
+  // Size SVG to match image
+  overlaySvg.setAttribute('width', imageWidth);
+  overlaySvg.setAttribute('height', imageHeight);
+
+  // Fit image in viewport
+  const areaRect = canvasArea.getBoundingClientRect();
+  const scaleX = areaRect.width / imageWidth;
+  const scaleY = areaRect.height / imageHeight;
+  scale = Math.min(scaleX, scaleY) * 0.95;
+  panX = (areaRect.width - imageWidth * scale) / 2;
+  panY = (areaRect.height - imageHeight * scale) / 2;
+  applyTransform();
+
+  // Load annotations
+  const raw = await fetchAnnotations();
+  annotations = raw.map(a => ({ ...a, _id: genId() }));
+
+  statusEl.textContent = `Zoom: ${Math.round(scale * 100)}% | ${annotations.filter(a => !a.is_preannotation).length} annotations`;
+  render();
+}
+
+init().catch(err => {
+  statusEl.textContent = `Error: ${err.message}`;
+  console.error(err);
+});
+</script>
+</body>
+</html>
