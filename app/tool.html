@@ -17,10 +17,6 @@
   --border: #2a2a4a;
   --selected: #e9456030;
 
-  --color-vendor_name: #4ecdc4;
-  --color-total: #ff6b6b;
-  --color-total_tax: #ffd93d;
-  --color-location: #6c5ce7;
 }
 html, body { height: 100%; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
 
@@ -72,7 +68,6 @@ button {
   transition: background 0.15s;
 }
 button:hover { background: #1a4a80; }
-button.active { background: var(--accent); border-color: var(--accent); }
 button.save-btn { background: #27ae60; border-color: #27ae60; }
 button.save-btn:hover { background: #2ecc71; }
 button.delete-btn { background: #c0392b; border-color: #c0392b; font-size: 12px; padding: 4px 10px; }
@@ -149,15 +144,6 @@ svg .ann-group circle.vertex:hover {
 }
 .annotation-card:hover { border-color: #4a4a6a; }
 .annotation-card.selected { border-color: var(--accent); background: var(--selected); }
-.annotation-card .field-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
 .annotation-card .card-header {
   display: flex;
   justify-content: space-between;
@@ -301,7 +287,6 @@ const canvasArea = document.getElementById('canvasArea');
 const canvasContainer = document.getElementById('canvasContainer');
 const docImage = document.getElementById('docImage');
 const overlaySvg = document.getElementById('overlaySvg');
-const sidebar = document.getElementById('sidebar');
 const annotationList = document.getElementById('annotationList');
 const statusEl = document.getElementById('status');
 const saveBtn = document.getElementById('saveBtn');
