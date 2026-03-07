@@ -158,7 +158,7 @@ svg .ann-group circle.vertex:hover {
   justify-content: space-between;
   align-items: center;
 }
-.annotation-card input[type="text"] {
+.annotation-card textarea {
   width: 100%;
   padding: 6px 8px;
   background: var(--surface);
@@ -166,8 +166,12 @@ svg .ann-group circle.vertex:hover {
   border-radius: 4px;
   color: var(--text);
   font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 28px;
+  field-sizing: content;
 }
-.annotation-card input[type="text"]:focus {
+.annotation-card textarea:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -447,7 +451,6 @@ function renderSvg() {
       preview.setAttribute('fill', color);
       preview.setAttribute('fill-opacity', '0.15');
       preview.setAttribute('stroke', color);
-      preview.setAttribute('stroke-dasharray', '6 3');
       preview.setAttribute('id', 'drawing-preview');
       overlaySvg.appendChild(preview);
     } else {
@@ -456,7 +459,6 @@ function renderSvg() {
       preview.setAttribute('points', pointsStr);
       preview.setAttribute('fill', 'none');
       preview.setAttribute('stroke', color);
-      preview.setAttribute('stroke-dasharray', '6 3');
       preview.setAttribute('id', 'drawing-preview');
       overlaySvg.appendChild(preview);
     }
@@ -468,8 +470,8 @@ function renderSvg() {
       const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       circle.setAttribute('cx', cx);
       circle.setAttribute('cy', cy);
-      circle.setAttribute('fill', color);
-      circle.setAttribute('stroke', 'white');
+      circle.setAttribute('fill', 'white');
+      circle.setAttribute('stroke', color);
       circle.classList.add('vertex');
       overlaySvg.appendChild(circle);
     });
@@ -485,7 +487,7 @@ function renderSidebar() {
     const card = document.createElement('div');
     card.className = `annotation-card${ann._id === selectedId ? ' selected' : ''}`;
     card.addEventListener('click', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
       selectAnnotation(ann._id);
     });
 
@@ -498,7 +500,7 @@ function renderSidebar() {
         </select>
         <button class="delete-btn" data-id="${ann._id}">Delete</button>
       </div>
-      <input type="text" value="${ann.value}" data-id="${ann._id}" data-field="value" placeholder="Value...">
+      <textarea data-id="${ann._id}" data-field="value" placeholder="Value...">${ann.value}</textarea>
       <label>
         <input type="checkbox" ${ann.handwriting ? 'checked' : ''} data-id="${ann._id}" data-field="handwriting">
         Handwriting
@@ -508,10 +510,13 @@ function renderSidebar() {
   }
 
   // Event delegation for inputs
-  annotationList.querySelectorAll('input[type="text"]').forEach(input => {
+  annotationList.querySelectorAll('textarea').forEach(input => {
     input.addEventListener('input', (e) => {
       const ann = annotations.find(a => a._id === e.target.dataset.id);
       if (ann) ann.value = e.target.value;
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
     });
   });
 
@@ -708,19 +713,15 @@ overlaySvg.addEventListener('click', (e) => {
   const [px, py] = svgPoint(e.clientX, e.clientY);
   drawingVertices.push([px, py]);
   renderSvg();
-  statusEl.textContent = `${drawingVertices.length} vertices placed. Double-click to finish.`;
+  statusEl.textContent = `${drawingVertices.length} vertices placed. Enter or double-click to finish.`;
 });
 
-overlaySvg.addEventListener('dblclick', (e) => {
-  if (!drawingMode) return;
-  e.preventDefault();
+function finishDrawing({ removeLast = false } = {}) {
   if (drawingVertices.length < 3) {
     showToast('Need at least 3 vertices', 'error');
     return;
   }
-  // Remove the last vertex added by the click event of the dblclick
-  // (dblclick fires two clicks then dblclick — the last click added a duplicate)
-  if (drawingVertices.length > 3) {
+  if (removeLast && drawingVertices.length > 3) {
     drawingVertices.pop();
   }
   const newAnn = {
@@ -734,6 +735,14 @@ overlaySvg.addEventListener('dblclick', (e) => {
   annotations.push(newAnn);
   selectedId = newAnn._id;
   exitDrawingMode();
+  const valueInput = annotationList.querySelector(`textarea[data-id="${newAnn._id}"][data-field="value"]`);
+  if (valueInput) valueInput.focus();
+}
+
+overlaySvg.addEventListener('dblclick', (e) => {
+  if (!drawingMode) return;
+  e.preventDefault();
+  finishDrawing({ removeLast: true });
 });
 
 // Deselect on click in empty area
@@ -751,7 +760,10 @@ document.addEventListener('keydown', (e) => {
     if (drawingMode) exitDrawingMode();
     else { selectedId = null; render(); }
   }
-  if (e.key === 'Delete' && selectedId && document.activeElement.tagName !== 'INPUT') {
+  if (e.key === 'Enter' && drawingMode) {
+    finishDrawing();
+  }
+  if (e.key === 'Delete' && selectedId && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
     annotations = annotations.filter(a => a._id !== selectedId);
     selectedId = null;
     render();
