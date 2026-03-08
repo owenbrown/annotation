@@ -114,7 +114,7 @@ It might be interesting to have a confidence score for fields.
 1. Articulate the business problem being solved. 
   - For humans, sometimes this is articulated in Jira ticket, or a conversation.
   - For an AI agent, this might articulated through a conversation with the manager in, for example, Claude Code or Cursor.
-2. Decide what (document, fields) need to be updated.
+2. Decide what (document, fields) need to be updated or added.
   - A given "Annotations Task" might have fields being annotated on each document. For example, 
   7. The system must support partially annotating a document.
   - A task might consist of some documents being annotated for one field, and some documents being annotated with a separate field
@@ -144,4 +144,97 @@ I lean toward having an workflow similar to what we used for (amount,amount_text
 3. Write up decision - what is not yet decided
 4. Write up workflows
   5. Write up inputs and outputs for each function / service
-6.
+
+
+## Models
+Task
+- Name
+- Description
+  - Contains context about the business problem being solved
+- Document Type
+- job_population_method
+  - there are several reasosn for using many small jobs instead of one giant job.
+    - We want to track annotators progress
+    - We want to gather accuracy, velocity before too much time passes
+    - We want to give feedback to annotators before they've created too many annotations.
+  - job population refers to the python function in the repo 
+- JobPopulationMethod
+  - name - a pithy name summarizing the issue
+  - python function path - like "annotations.jobmanagement.navan_problem_documents.py"
+    - Tells use which python function to call
+  - docstring - snap shot 
+  - optional fields
+- MLDocument
+  - contains links to the original and data team data if it exists
+- MLDocumentImage
+  - fk to MLDocument
+- Planned documents
+
+Job
+- Previously, this foreign keyed to jobs in CVAT
+- Job population Method - important for provenance
+- document_ids
+- honeypot_pairs json
+  - list of [document_id, field] 
+  - The reason this needs to be selected in advance is that it's not fair to assess accuracy on golden document that were added because the data was known to be annotated incorrectly. It would create bias. 
+  - it's possible to create a job without these selected in advance, but it won't be possible to fairly measure accuracy.
+  - If golden data doesn't exist yet, that is fine. The golden data can even be created afterwards. It could even be created using the annotations. 
+- git hash
+- ```python
+-   import subprocess
+
+def get_git_revision() -> str:
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], text=True
+    ).strip()
+  ```
+
+Annotation
+- field
+- attributes
+  - Stored as JSON
+- preannotations_attributes
+- type enum(pre_annotation, current_annotation)
+
+# Open question
+- There's an open question - should the pre-annotation be stored on the annotation? i vote for no since the field, value
+
+AnnotationSubmission
+- Annotators jobs get can be "kicked back", meaning the manager refuses to accept the submission.
+
+
+## Golden and Honeypots now required
+- Honeypots and Golden used to be something optional.
+- Now, they are required. The reason? In the long run, this saves the manager time.
+- Some honeny pot data is necessary to calculate the new F1 
+
+## New Accuraracy Score Calculation
+- Previously, F1 was calculated using the existence of a field in a document.
+- This isn't good enough. For example, if a document is 99% accurate, and the annotator does nothing, they shouldn't get a score of 99%. 
+- The new idea is based on **corrections**. Only meaningful correction are counted as true positives for the calculation. 
+- But, this does require that a lot of incorrect values must be injected into each job.
+- Without incorrect values, it's not possible to measure the accuracy of the annotation.
+
+## Why is this better?
+Faster - We can annotate more total documents because Irina doesn't have to review every single document, if the annotators accuracy is good and it's reviewed by two people.
+
+## Open question
+An open question is, do we get more accurate results if the second annotator starts from the initial pre-annotations, or if the second annotator starts with document after the corrections of the first annotator.
+
+Todo list
+1. [ ] Create new model
+2. [ ] Add fastapi, tiered architecture documents
+3. [ ] Create service / ui / ninja api to create a new task. Drop down menu for job population method
+  4. This service creates the Annotations for each Job, including sourcing the preannotations.
+  5. Job needs to specify **in advance** the 
+3. [ ] Create service to create a job explicitly from a list of (document, field). No UI.
+4. [ ] Create service (calling previously created service (
+5. [ ] Create "TasksList" service / ui / view showing list of tasks
+6. [ ] Create "TasksDetail" service / ui / view show detail of a task
+7. [ ] Create "JobList" to show list of jobs
+8. [ ] Create "JobDetail" to show details of job
+9. [ ] Create service to create the Golden Job. 
+  10. Service should always prefer to use 
+10. 
+
+Decide: is it better create this as a new Django app, or to migrate all of the existing views now?
